@@ -6,41 +6,35 @@ import java.util.Random;
 import java.util.stream.Collectors;
 
 public class Main {
-
     static PrintWriter p;
-    final int numIterations = 40000;
-    final int NumHiddenNeurons = 200;
+    int maxIdentifiedTest = 0;
+    int maxIdentifiedTrain = 0;
+    final int numIterations = 1000;
+    final int NumHiddenNeurons = 30;
     final int NumOutputNeurons = 5;
     final int numHiddenLayerInputs = 105;
-    final double eta = 0.001; //learning rate
+    final double eta = 0.01; //learning rate
     final int bias = -1;
-
-    final double accuracy = 0.27;
-
-    //    Hidden layer Weights  + 1 for bias
+    final double accuracy = 0.5;
+    //   Hidden layer Weights  + 1 for bias
     double[][] hiddenLayerWeights = new double[NumHiddenNeurons][numHiddenLayerInputs + 1];
-
     //    Hidden layer Output
     double[] hiddenLayerFnet = new double[NumHiddenNeurons];
-
     // Output layer weights + 1 for bias
     double[][] outputLayerWeights = new double[NumOutputNeurons][NumHiddenNeurons + 1];
-
     // Output layer weights
     double[] outputLayerFnet = new double[NumOutputNeurons];
 
     public Main() throws IOException {
         p = new PrintWriter("output.csv");
-
         List<Character> characters = readCharactersFromFile("/char_profiles_alphabet.txt");
         List<Character> testingSet = readCharactersFromFile("/test_char_profiles_alphabet.txt");
 
         initializeEmptyWeights();
 
-        double previousTestingSSE = 0.0,
+        double previousTestingSSE = Double.MAX_VALUE,
                 trainingSSE = 0.0,
-                currentTestingSSE = 0.0;
-
+                currentTestingSSE = Double.MAX_VALUE;
         int iterationCount = 0;
 
         StringBuilder printString = new StringBuilder();
@@ -48,21 +42,17 @@ public class Main {
         System.out.println("Starting training:");
         while (iterationCount < numIterations &&
                 previousTestingSSE >= currentTestingSSE) {
-
+            previousTestingSSE = currentTestingSSE;
             int testCorrect = 0, trainCorrect = 0;
             trainingSSE = 0.0;
             currentTestingSSE = 0.0;
 
-//            System.out.println("Iteration: " + iterationCount);
-//            System.out.printf("Training...");
+            System.out.println("Iteration: " + iterationCount);
             int trainCharCorrect = 0;
-
-            printString.append(String.valueOf(iterationCount)).append(";");
-
+            printString.append(String.valueOf(iterationCount)).append(",");
 
             for (int i = 0; i < characters.size(); i++) {
                 Character c = characters.get(i);
-
                 trainWithCharacter(c);
 
                 // Calculate SSE for pattern p
@@ -71,27 +61,28 @@ public class Main {
                     double neuronError = Math.abs(c.getBinary()[j] - outputLayerFnet[j]);
                     if (c.getBinary()[j] == 0.0 && neuronError <= accuracy) {
                         trainCorrect++;
-                    } else if (c.getBinary()[j] == 1.0 && (1-neuronError) < accuracy) {
+                    } else if (c.getBinary()[j] == 1.0 && (1-neuronError) <= accuracy) {
                         trainCorrect++;
                     }
-
                     trainingSSE += Math.pow(neuronError, 2);
                 }
-
                 if (trainCorrect == NumOutputNeurons) {
-//                    System.out.println("(Train) Correctly identified: " + c.desired);
                     trainCharCorrect++;
                 }
             }
 
-            printString.append(String.valueOf(trainingSSE)).append(";");
-            printString.append(String.valueOf(trainCharCorrect)).append(";");
+            if (trainCharCorrect > maxIdentifiedTrain)
+                maxIdentifiedTrain = trainCharCorrect;
 
-            // Calculate SSE for all patterns
-//            System.out.println("Train SSE: " + trainingSSE);
+            if (trainCharCorrect == characters.size()) {
+                System.out.println("All training characters identified");
+            } else {
+                System.out.println("Identified (Train): " + trainCharCorrect);
+            }
 
-//            Testing
-//            System.out.println("Testing:");
+            printString.append(String.valueOf(trainingSSE)).append(",");
+            printString.append(String.valueOf(trainCharCorrect)).append(",");
+
             int testCharCorrect = 0;
             for (int i = 0; i < testingSet.size(); i++) {
                 // fnet of inputs to hidden   20 * 106              20
@@ -112,34 +103,30 @@ public class Main {
                     }
                     currentTestingSSE = Math.pow(neuronError, 2);
                 }
-
-//                System.out.println("Target:");
-//                for (int ii :testingSet.get(i).getBinary()) { System.out.printf("%1d\n", ii); }
-//                System.out.println("Output:");
-//                for (double d :arrOutput) { System.out.printf("%6.2f\n", d); }
-
                 if (testCorrect == NumOutputNeurons) {
-//                    System.out.println("(Test) Correctly identified: " + testingSet.get(i).desired);
                     testCharCorrect++;
                 }
             }
 
+            if (testCharCorrect > maxIdentifiedTest)
+                maxIdentifiedTest = testCharCorrect;
+
             if (testCharCorrect == testingSet.size()) {
                 System.out.println("All testing characters identified");
             } else {
-                System.out.println("Identified: " + testCharCorrect);
+                System.out.println("Identified (Test): " + testCharCorrect);
             }
 
-            previousTestingSSE = currentTestingSSE;
-
-            printString.append(String.valueOf(currentTestingSSE)).append(";");
-            printString.append(String.valueOf(testCharCorrect)).append(";");
-            p.write(printString.toString().concat("\n").replace(".", ","));
+            printString.append(String.valueOf(currentTestingSSE)).append(",");
+            printString.append(String.valueOf(testCharCorrect)).append(",");
+            p.write(printString.toString().concat("\n"));
             p.flush();
             printString = new StringBuilder();
 
             iterationCount++;
         }
+        System.out.println("Max identified train: " + maxIdentifiedTrain);
+        System.out.println("Max identified test: " + maxIdentifiedTest);
     }
 
     private void trainWithCharacter(Character c) {
@@ -170,17 +157,12 @@ public class Main {
     }
 
     public List<Character> readCharactersFromFile(String resource) throws IOException {
-
         List<Character> characters = new ArrayList<>();
-
         //  Read iterator from characters text file
         InputStream resourceAsStream = getClass().getResourceAsStream(resource);
         BufferedReader br = new BufferedReader(new InputStreamReader(resourceAsStream));
-
         String line = "";
-
         Character c = null;
-
         while ((line = br.readLine()) != null) {
             if (line.length() > 0) {
                 if (line.length() == 1) {
@@ -198,10 +180,8 @@ public class Main {
                 }
             }
         }
-
         // Add last letter to character map
         characters.add(c);
-
 
         // Return characters
         return characters;
@@ -217,7 +197,6 @@ public class Main {
                 }
                 weightsToUpdate[i][j] = weightsToUpdate[i][j] - (eta * weightChange);
             }
-
             // update bias
             int j = 0;
             double weightChange = 0.0;
@@ -237,7 +216,6 @@ public class Main {
                 double weightChange = -1.0 * delta[i] * inputVectors[j - 1];
                 weightsToUpdate[i][j] = currentWeight - (eta * weightChange);
             }
-
             // update bias
             int j = 0;
             double currentWeight = weightsToUpdate[i][j];
@@ -287,16 +265,23 @@ public class Main {
         // initialize weights - hidden layer
         for (int i = 0; i < hiddenLayerWeights.length; i++) {
             for (int i1 = 0; i1 < hiddenLayerWeights[i].length; i1++) {
-                hiddenLayerWeights[i][i1] = new Random().nextGaussian(); // -1.0 to 1.0
+//                hiddenLayerWeights[i][i1] = new Random(1).nextGaussian(); // -1.0 to 1.0
+                // Appropriate weight init
+                hiddenLayerWeights[i][i1] = generalizedfWeight(new Random(1).nextGaussian()); // -1.0 to 1.0
             }
         }
 
         // initialize weights - output layer
         for (int i = 0; i < outputLayerWeights.length; i++) {
             for (int i1 = 0; i1 < outputLayerWeights[i].length; i1++) {
-                outputLayerWeights[i][i1] = new Random().nextGaussian(); // -1.0 to 1.0
+//                outputLayerWeights[i][i1] = new Random(1).nextGaussian(); // -1.0 to 1.0
+                outputLayerWeights[i][i1] = generalizedfWeight(new Random(1).nextGaussian()); // -1.0 to 1.0
             }
         }
+    }
+
+    private double generalizedfWeight(double v) {
+        return 1 / Math.sqrt(v) ;
     }
 }
 
